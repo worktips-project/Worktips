@@ -1,5 +1,5 @@
 # Copyright (c) 2018, The Worktips Project
-# Copyright (c) 2018, The worktips Project
+# Copyright (c) 2018, The Loki Project
 # Copyright (c) 2014-2018, The Monero Project
 #
 # All rights reserved.
@@ -119,6 +119,9 @@ set(CMAKE_FIND_FRAMEWORK "LAST")
 # to identify the target architecture, to direct logic in this cmake script.
 # Since ARCH is a cached variable, it will not be set on first cmake invocation.
 if (NOT ARCH OR ARCH STREQUAL "" OR ARCH STREQUAL "native" OR ARCH STREQUAL "default")
+  if(CMAKE_SYSTEM_PROCESSOR STREQUAL "")
+    set(CMAKE_SYSTEM_PROCESSOR ${CMAKE_HOST_SYSTEM_PROCESSOR})
+  endif()
   set(ARCH_ID "${CMAKE_SYSTEM_PROCESSOR}")
 else()
   set(ARCH_ID "${ARCH}")
@@ -247,6 +250,9 @@ enable_testing()
 
 option(BUILD_DOCUMENTATION "Build the Doxygen documentation." ON)
 option(BUILD_TESTS "Build tests." OFF)
+if (BUILD_TESTS)
+  add_definitions(-DUNIT_TEST)
+endif()
 
 # Check whether we're on a 32-bit or 64-bit system
 if(CMAKE_SIZEOF_VOID_P EQUAL "8")
@@ -696,7 +702,6 @@ else()
   endif()
 
   if(BACKCOMPAT)
-      add_definitions(-DFDELT_TYPE=long\ int)
       add_linker_flag_if_supported(-Wl,--wrap=__divmoddi4 LD_BACKCOMPAT_FLAGS)
       add_linker_flag_if_supported(-Wl,--wrap=glob LD_BACKCOMPAT_FLAGS)
       message(STATUS "Using Lib C back compat flags: ${LD_BACKCOMPAT_FLAGS}")
@@ -883,7 +888,7 @@ set(OLD_LIB_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES})
 if(STATIC)
   if(MINGW)
     set(CMAKE_FIND_LIBRARY_SUFFIXES .a)
-	set(Boost_NO_BOOST_CMAKE ON)
+    set(Boost_NO_BOOST_CMAKE ON)
   endif()
 
   set(Boost_USE_STATIC_LIBS ON)
@@ -903,9 +908,9 @@ elseif(Boost_FOUND)
     set(BOOST_BEFORE_1_62 true)
   endif()
   if (BOOST_BEFORE_1_62)
-	message(FATAL_ERROR "Boost older than 1.62 is too old to link with OpenSSL 1.1 or newer. "
+      message(FATAL_ERROR "Boost ${Boost_VERSION} (older than 1.62) is too old to link with OpenSSL ${OPENSSL_VERSION} (1.1 or newer) found at ${OPENSSL_INCLUDE_DIR} and ${OPENSSL_LIBRARIES}. "
                           "Update Boost or install OpenSSL 1.0 and set path to it when running cmake: "
-                          "cmake -DOPENSSL_ROOT_DIR='/usr/include/openssl-1.0;/usr/lib/openssl-1.0'")
+                          "cmake -DOPENSSL_ROOT_DIR='/usr/include/openssl-1.0'")
   endif()
 endif()
 
@@ -914,7 +919,7 @@ if(MINGW)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wa,-mbig-obj")
   set(EXTRA_LIBRARIES mswsock;ws2_32;iphlpapi;crypt32;bcrypt)
   if(DEPENDS)
-    set(ICU_LIBRARIES sicuio sicuin sicuuc sicudt sicutu iconv)
+    set(ICU_LIBRARIES icuio icui18n icuuc icudata icutu iconv)
   else()
     set(ICU_LIBRARIES icuio icuin icuuc icudt icutu iconv)
   endif()
@@ -1038,3 +1043,5 @@ option(INSTALL_VENDORED_LIBUNBOUND "Install libunbound binary built from source 
 
 
 CHECK_C_COMPILER_FLAG(-std=c11 HAVE_C11)
+
+find_package(PythonInterp)
