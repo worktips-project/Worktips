@@ -31,11 +31,15 @@
 
 #include <string>
 
+#define WORKTIPS_RPC_DOC_INTROSPECT
 namespace worktips
 {
 double      round           (double);
 double      exp2            (double);
 std::string hex64_to_base32z(std::string const& src);
+
+template <typename T, size_t N>
+constexpr size_t array_count(T (&)[N]) { return N; }
 }; // namespace Worktips
 
 #endif // WORKTIPS_H

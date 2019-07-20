@@ -1,4 +1,3 @@
-// Copyright (c)      2018, The Loki Project
 // Copyright (c)      2018, The Worktips Project
 //
 // All rights reserved.
@@ -29,29 +28,17 @@
 
 #pragma once
 
-#include "blockchain.h"
 #include <boost/variant.hpp>
 #include "serialization/serialization.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "cryptonote_core/service_node_deregister.h"
+#include "cryptonote_core/service_node_voting.h"
+#include "cryptonote_core/service_node_quorum_cop.h"
+
+namespace cryptonote { struct Blockchain; struct BlockchainDB; }
 
 namespace service_nodes
 {
-  class quorum_cop;
-
-  struct quorum_state
-  {
-    std::vector<crypto::public_key> quorum_nodes;
-    std::vector<crypto::public_key> nodes_to_test;
-
-    BEGIN_SERIALIZE()
-      FIELD(quorum_nodes)
-      FIELD(nodes_to_test)
-    END_SERIALIZE()
-  };
-
-  using swarm_id_t = uint64_t;
-
   struct service_node_info // registration information
   {
     struct contribution_t
@@ -74,6 +61,7 @@ namespace service_nodes
       version_0,
       version_1_swarms,
       version_2_infinite_staking,
+      version_3_checkpointing,
     };
 
     struct contributor_t
@@ -115,12 +103,14 @@ namespace service_nodes
     uint64_t                           portions_for_operator;
     swarm_id_t                         swarm_id;
     cryptonote::account_public_address operator_address;
+    uint32_t                           public_ip;
+    uint16_t                           storage_port;
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     size_t total_num_locked_contributions() const;
 
-    int                                dummy; // FIXME
+    int                                dummy; // FIXME(doyle)
     BEGIN_SERIALIZE_OBJECT()
       VARINT_FIELD(version)
       VARINT_FIELD(registration_height)
@@ -138,7 +128,9 @@ namespace service_nodes
       {
         VARINT_FIELD(swarm_id)
       }
-      VARINT_FIELD(dummy)
+      VARINT_FIELD(public_ip)
+      VARINT_FIELD(storage_port)
+
     END_SERIALIZE()
   };
 
@@ -167,19 +159,28 @@ namespace service_nodes
   };
 
   template<typename T>
-  void worktips_shuffle(std::vector<T>& a, uint64_t seed);
+  void worktips_shuffle(std::vector<T>& a, uint64_t seed)
+  {
+    if (a.size() <= 1) return;
+    std::mt19937_64 mersenne_twister(seed);
+    for (size_t i = 1; i < a.size(); i++)
+    {
+      size_t j = (size_t)uniform_distribution_portable(mersenne_twister, i+1);
+      if (i != j)
+        std::swap(a[i], a[j]);
+    }
+  }
 
   class service_node_list
-    : public cryptonote::Blockchain::BlockAddedHook,
-      public cryptonote::Blockchain::BlockchainDetachedHook,
-      public cryptonote::Blockchain::InitHook,
-      public cryptonote::Blockchain::ValidateMinerTxHook
+    : public cryptonote::BlockAddedHook,
+      public cryptonote::BlockchainDetachedHook,
+      public cryptonote::InitHook,
+      public cryptonote::ValidateMinerTxHook
   {
   public:
     service_node_list(cryptonote::Blockchain& blockchain);
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
     void blockchain_detached(uint64_t height) override;
-    void register_hooks(service_nodes::quorum_cop &quorum_cop);
     void init() override;
     bool validate_miner_tx(const crypto::hash& prev_id, const cryptonote::transaction& miner_tx, uint64_t height, int hard_fork_version, cryptonote::block_reward_parts const &base_reward) const override;
     std::vector<std::pair<cryptonote::account_public_address, uint64_t>> get_winner_addresses_and_portions() const;
@@ -191,7 +192,8 @@ namespace service_nodes
     void update_swarms(uint64_t height);
 
     /// Note(maxim): this should not affect thread-safety as the returned object is const
-    const std::shared_ptr<const quorum_state> get_quorum_state(uint64_t height) const;
+    std::shared_ptr<const testing_quorum> get_testing_quorum(quorum_type type, uint64_t height) const;
+
     std::vector<service_node_pubkey_info> get_service_node_list_state(const std::vector<crypto::public_key> &service_node_pubkeys) const;
     const std::vector<key_image_blacklist_entry> &get_blacklisted_key_images() const { return m_transient_state.key_image_blacklist; }
 
@@ -201,6 +203,9 @@ namespace service_nodes
 
     void get_all_service_nodes_public_keys(std::vector<crypto::public_key>& keys, bool fully_funded_nodes_only) const;
 
+    /// Record public ip and storage port and add them to the service node list
+    void handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
+
     struct rollback_event
     {
       enum rollback_type
@@ -209,7 +214,7 @@ namespace service_nodes
         new_type,
         prevent_type,
         key_image_blacklist_type,
-		key_image_unlock,
+        key_image_unlock,
       };
 
       rollback_event() = default;
@@ -289,16 +294,18 @@ namespace service_nodes
     };
     typedef boost::variant<rollback_change, rollback_new, prevent_rollback, rollback_key_image_blacklist, rollback_key_image_unlock> rollback_event_variant;
 
-    struct quorum_state_for_serialization
+    struct quorum_for_serialization
     {
-      uint8_t version;
-      uint64_t height;
-      quorum_state state;
+      uint8_t        version;
+      uint64_t       height;
+      testing_quorum quorums[(size_t)quorum_type::count];
 
       BEGIN_SERIALIZE()
         FIELD(version)
         FIELD(height)
-        FIELD(state)
+        FIELD_N("deregister_quorum", quorums[(size_t)quorum_type::deregister])
+        if (version >= service_node_info::version_3_checkpointing)
+          FIELD_N("checkpointing_quorum", quorums[(size_t)quorum_type::checkpointing])
       END_SERIALIZE()
     };
 
@@ -306,7 +313,7 @@ namespace service_nodes
     {
       uint8_t version;
       uint64_t height;
-      std::vector<quorum_state_for_serialization> quorum_states;
+      std::vector<quorum_for_serialization> quorum_states;
       std::vector<service_node_pubkey_info> infos;
       std::vector<rollback_event_variant> events;
       std::vector<key_image_blacklist_entry> key_image_blacklist;
@@ -328,15 +335,12 @@ namespace service_nodes
     bool process_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index);
     void process_contribution_tx(const cryptonote::transaction& tx, uint64_t block_height, uint32_t index);
     bool process_deregistration_tx(const cryptonote::transaction& tx, uint64_t block_height);
+    void process_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
 
     std::vector<crypto::public_key> get_service_nodes_pubkeys() const;
 
-    template<typename T>
-    void block_added_generic(const cryptonote::block& block, const T& txs);
-
     bool contribution_tx_output_has_correct_unlock_time(const cryptonote::transaction& tx, size_t i, uint64_t block_height) const;
-
-    void store_quorum_state_from_rewards_list(uint64_t height);
+    void generate_quorums(cryptonote::block const &block);
 
     bool is_registration_tx(const cryptonote::transaction& tx, uint64_t block_timestamp, uint64_t block_height, uint32_t index, crypto::public_key& key, service_node_info& info) const;
     std::vector<crypto::public_key> update_and_get_expired_nodes(const std::vector<cryptonote::transaction> &txs, uint64_t block_height);
@@ -346,7 +350,6 @@ namespace service_nodes
 
     mutable boost::recursive_mutex m_sn_mutex;
     cryptonote::Blockchain&        m_blockchain;
-    bool                           m_hooks_registered;
     crypto::public_key const      *m_service_node_pubkey;
     cryptonote::BlockchainDB      *m_db;
 
@@ -355,7 +358,7 @@ namespace service_nodes
     {
       std::unordered_map<crypto::public_key, service_node_info>   service_nodes_infos;
       std::vector<key_image_blacklist_entry>                      key_image_blacklist;
-      std::map<block_height, std::shared_ptr<const quorum_state>> quorum_states;
+      std::map<block_height, quorum_manager>                      quorum_states;
       std::list<std::unique_ptr<rollback_event>>                  rollback_events;
       block_height                                                height;
     } m_transient_state;

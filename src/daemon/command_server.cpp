@@ -1,6 +1,6 @@
-// Copyright (c) 2014-2018, The Monero Project
-// Copyright (c)      2018, The Loki Project
-// Copyright (c)      2018, The Worktips Project
+// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2018-2019, The Loki Project
+// Copyright (c)      2019, The Worktips Project
 // 
 // All rights reserved.
 // 
@@ -83,6 +83,11 @@ t_command_server::t_command_server(
     , "Print the current connections."
     );
   m_command_lookup.set_handler(
+      "print_net_stats"
+    , std::bind(&t_command_parser_executor::print_net_stats, &m_parser, p::_1)
+    , "Print network statistics."
+    );
+  m_command_lookup.set_handler(
       "print_bc"
     , std::bind(&t_command_parser_executor::print_blockchain_info, &m_parser, p::_1)
     , "print_bc <begin_height> [<end_height>]"
@@ -145,13 +150,18 @@ t_command_server::t_command_server(
   m_command_lookup.set_handler(
       "start_mining"
     , std::bind(&t_command_parser_executor::start_mining, &m_parser, p::_1)
-    , "start_mining <addr> [<threads>] [do_background_mining] [ignore_battery]"
-    , "Start mining for specified address. Defaults to 1 thread and no background mining."
+    , "start_mining <addr> [<threads>|auto] [do_background_mining] [ignore_battery]"
+    , "Start mining for specified address. Defaults to 1 thread and no background mining. Use \"auto\" to autodetect optimal number of threads."
     );
   m_command_lookup.set_handler(
       "stop_mining"
     , std::bind(&t_command_parser_executor::stop_mining, &m_parser, p::_1)
     , "Stop mining."
+    );
+  m_command_lookup.set_handler(
+      "mining_status"
+    , std::bind(&t_command_parser_executor::mining_status, &m_parser, p::_1)
+    , "Show current mining status."
     );
   m_command_lookup.set_handler(
       "print_pool"
@@ -344,6 +354,35 @@ t_command_server::t_command_server(
     , std::bind(&t_command_parser_executor::check_blockchain_pruning, &m_parser, p::_1)
     , "Check the blockchain pruning."
     );
+    m_command_lookup.set_handler(
+      "print_checkpoints"
+    , std::bind(&t_command_parser_executor::print_checkpoints, &m_parser, p::_1)
+    , ""
+    );
+
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
+    m_command_lookup.set_handler(
+      "relay_votes_and_uptime", std::bind([rpc_server](std::vector<std::string> const &args) {
+        rpc_server->on_relay_uptime_and_votes();
+        return true;
+      }, p::_1)
+    , ""
+    );
+
+    m_command_lookup.set_handler(
+      "debug_mine_n_blocks", std::bind([rpc_server](std::vector<std::string> const &args) {
+        uint64_t num_blocks = 0;
+        if (args.size() == 2 && epee::string_tools::get_xtype_from_string(num_blocks, args[1]))
+          rpc_server->on_debug_mine_n_blocks(args[0], num_blocks);
+        else
+          std::cout << "Invalid args, expected debug_mine_n_blocks <address> <num_blocks>";
+
+        worktips::write_redirected_stdout_to_shared_mem();
+        return true;
+      }, p::_1)
+    , ""
+    );
+#endif
 }
 
 bool t_command_server::process_command_str(const std::string& cmd)
@@ -374,7 +413,7 @@ bool t_command_server::start_handling(std::function<void(void)> exit_handler)
   {
     // TODO(doyle): Hack, don't hook into input until the daemon has completely initialised, i.e. you can print the status
     while(!worktips::core_is_idle) {}
-    mlog_set_categories("");
+    mlog_set_categories(""); // TODO(doyle): We shouldn't have to do this.
 
     for (;;)
     {

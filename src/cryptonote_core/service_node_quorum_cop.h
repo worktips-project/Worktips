@@ -1,4 +1,3 @@
-// Copyright (c)      2018, The Loki Project
 // Copyright (c)      2018, The Worktips Project
 //
 // All rights reserved.
@@ -29,20 +28,46 @@
 
 #pragma once
 
-#include "blockchain.h"
+#include "serialization/serialization.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
+#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "cryptonote_core/service_node_voting.h"
 
 namespace cryptonote
 {
   class core;
+  struct vote_verification_context;
 };
 
 namespace service_nodes
 {
+  struct proof_info
+  {
+      uint64_t timestamp;
+      uint16_t version_major, version_minor, version_patch;
+  };
+
+  struct testing_quorum
+  {
+    std::vector<crypto::public_key> validators;
+    std::vector<crypto::public_key> workers;
+
+    BEGIN_SERIALIZE()
+      FIELD(validators)
+      FIELD(workers)
+    END_SERIALIZE()
+  };
+
+  struct quorum_manager
+  {
+    std::shared_ptr<const testing_quorum> deregister;
+    std::shared_ptr<const testing_quorum> checkpointing;
+  };
+
   class quorum_cop
-    : public cryptonote::Blockchain::BlockAddedHook,
-      public cryptonote::Blockchain::BlockchainDetachedHook,
-      public cryptonote::Blockchain::InitHook
+    : public cryptonote::BlockAddedHook,
+      public cryptonote::BlockchainDetachedHook,
+      public cryptonote::InitHook
   {
   public:
     explicit quorum_cop(cryptonote::core& core);
@@ -51,24 +76,26 @@ namespace service_nodes
     void block_added(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) override;
     void blockchain_detached(uint64_t height) override;
 
-    bool handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
+    void                       set_votes_relayed  (std::vector<quorum_vote_t> const &relayed_votes);
+    std::vector<quorum_vote_t> get_relayable_votes();
+    bool                       handle_vote        (quorum_vote_t const &vote, cryptonote::vote_verification_context &vvc);
+    bool                       handle_uptime_proof(const cryptonote::NOTIFY_UPTIME_PROOF::request &proof);
 
     static const uint64_t REORG_SAFETY_BUFFER_IN_BLOCKS = 20;
-    static_assert(REORG_SAFETY_BUFFER_IN_BLOCKS < deregister_vote::VOTE_LIFETIME_BY_HEIGHT,
-                  "Safety buffer should always be less than the vote lifetime");
-    bool prune_uptime_proof();
 
-    uint64_t get_uptime_proof(const crypto::public_key &pubkey) const;
-
-    void generate_uptime_proof_request(cryptonote::NOTIFY_UPTIME_PROOF::request& req) const;
+    bool       prune_uptime_proof();
+    proof_info get_uptime_proof(const crypto::public_key &pubkey) const;
+    void       generate_uptime_proof_request(cryptonote::NOTIFY_UPTIME_PROOF::request& req) const;
 
   private:
+    void process_quorums(cryptonote::block const &block);
 
     cryptonote::core& m_core;
-    uint64_t m_last_height;
+    voting_pool       m_vote_pool;
+    uint64_t          m_uptime_proof_height;
+    uint64_t          m_last_checkpointed_height;
 
-    using timestamp = uint64_t;
-    std::unordered_map<crypto::public_key, timestamp> m_uptime_proof_seen;
+    std::unordered_map<crypto::public_key, proof_info> m_uptime_proof_seen;
     mutable epee::critical_section m_lock;
   };
 }

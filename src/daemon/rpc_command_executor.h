@@ -6,9 +6,9 @@
 
 */
 
-// Copyright (c) 2014-2018, The Monero Project
-// Copyright (c)      2018, The Loki Project
-// Copyright (c)      2018, The Worktips Project
+// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2018-2019, The Loki Project
+// Copyright (c)      2019, The Worktips Project
 // 
 // All rights reserved.
 // 
@@ -69,6 +69,8 @@ public:
 
   ~t_rpc_command_executor();
 
+  bool print_checkpoints() { m_rpc_server->on_get_checkpoints(); return true; }
+
   bool print_peer_list(bool white = true, bool gray = true, size_t limit = 0);
 
   bool print_peer_list_stats();
@@ -112,6 +114,8 @@ public:
   bool start_mining(cryptonote::account_public_address address, uint64_t num_threads, cryptonote::network_type nettype, bool do_background_mining = false, bool ignore_battery = false);
 
   bool stop_mining();
+
+  bool mining_status();
 
   bool stop_daemon();
 
@@ -172,6 +176,8 @@ public:
   bool prune_blockchain();
 
   bool check_blockchain_pruning();
+
+  bool print_net_stats();
 };
 
 } // namespace daemonize

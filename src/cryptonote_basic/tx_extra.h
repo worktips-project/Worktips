@@ -1,4 +1,4 @@
-// Copyright (c) 2014-2018, The Monero Project
+// Copyright (c) 2014-2019, The Monero Project
 // 
 // All rights reserved.
 // 
@@ -239,8 +239,10 @@ namespace cryptonote
   {
     struct vote
     {
+      vote() = default;
+      vote(crypto::signature const &signature, uint32_t validator_index): signature(signature), validator_index(validator_index) { }
       crypto::signature signature;
-      uint32_t          voters_quorum_index;
+      uint32_t          validator_index;
     };
 
     uint64_t          block_height;

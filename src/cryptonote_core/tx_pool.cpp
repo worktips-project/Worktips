@@ -1,6 +1,6 @@
-// Copyright (c) 2014-2018, The Monero Project
-// Copyright (c)      2018, The Loki Project
-// Copyright (c)      2018, The Worktips Project
+// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2018-2019, The Loki Project
+// Copyright (c)      2019, The Worktips Project
 //
 // All rights reserved.
 //
@@ -594,7 +594,7 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------------------------
-  bool tx_memory_pool::take_tx(const crypto::hash &id, transaction &tx, size_t& tx_weight, uint64_t& fee, bool &relayed, bool &do_not_relay, bool &double_spend_seen)
+  bool tx_memory_pool::take_tx(const crypto::hash &id, transaction &tx, cryptonote::blobdata &txblob, size_t& tx_weight, uint64_t& fee, bool &relayed, bool &do_not_relay, bool &double_spend_seen)
   {
     CRITICAL_REGION_LOCAL(m_transactions_lock);
     CRITICAL_REGION_LOCAL1(m_blockchain);
@@ -610,7 +610,7 @@ namespace cryptonote
         MERROR("Failed to find tx in txpool");
         return false;
       }
-      cryptonote::blobdata txblob = m_blockchain.get_txpool_tx_blob(id);
+      txblob = m_blockchain.get_txpool_tx_blob(id);
       auto ci = m_parsed_tx_cache.find(id);
       if (ci != m_parsed_tx_cache.end())
       {

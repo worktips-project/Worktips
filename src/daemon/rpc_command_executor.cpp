@@ -1,6 +1,6 @@
-// Copyright (c) 2014-2018, The Monero Project
-// Copyright (c)      2018, The Loki Project
-// Copyright (c)      2018, The Worktips Project
+// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2018-2019, The Loki Project
+// Copyright (c)      2019, The Worktips Project
 //
 // All rights reserved.
 //
@@ -127,8 +127,9 @@ namespace {
     peer_id_str >> id_str;
     epee::string_tools::xtype_to_string(peer.port, port_str);
     std::string addr_str = ip_str + ":" + port_str;
+    std::string rpc_port = peer.rpc_port ? std::to_string(peer.rpc_port) : "-";
     std::string pruning_seed = epee::string_tools::to_string_hex(peer.pruning_seed);
-    tools::msg_writer() << boost::format("%-10s %-25s %-25s %-4s %s") % prefix % id_str % addr_str % pruning_seed % elapsed;
+    tools::msg_writer() << boost::format("%-10s %-25s %-25s %-5s %-4s %s") % prefix % id_str % addr_str % rpc_port % pruning_seed % elapsed;
   }
 
   void print_block_header(cryptonote::block_header_response const & header)
@@ -540,7 +541,7 @@ bool t_rpc_command_executor::show_status() {
     % get_sync_percentage(ires)
     % (ires.testnet ? "testnet" : ires.stagenet ? "stagenet" : "mainnet")
     % bootstrap_msg
-    % (!has_mining_info ? "mining info unavailable" : mining_busy ? "syncing" : mres.active ? ( ( mres.is_background_mining_enabled ? "smart " : "" ) + std::string("mining at ") + get_mining_speed(mres.speed) + std::string(" to ") + mres.address ) : "not mining")
+    % (!has_mining_info ? "mining info unavailable" : mining_busy ? "syncing" : mres.active ? ( ( mres.is_background_mining_enabled ? "smart " : "" ) + std::string("mining at ") + get_mining_speed(mres.speed)) : "not mining")
     % get_mining_speed(ires.difficulty / ires.target)
     % (unsigned)hfres.version
     % get_fork_extra_info(hfres.earliest_height, net_height, ires.target)
@@ -561,6 +562,81 @@ bool t_rpc_command_executor::show_status() {
   }
 
   tools::success_msg_writer() << str.str();
+  return true;
+}
+
+bool t_rpc_command_executor::mining_status() {
+  cryptonote::COMMAND_RPC_MINING_STATUS::request mreq;
+  cryptonote::COMMAND_RPC_MINING_STATUS::response mres;
+  epee::json_rpc::error error_resp;
+  bool has_mining_info = true;
+
+  std::string fail_message = "Problem fetching info";
+
+  bool mining_busy = false;
+  if (m_is_rpc)
+  {
+    // mining info is only available non unrestricted RPC mode
+    has_mining_info = m_rpc_client->rpc_request(mreq, mres, "/mining_status", fail_message.c_str());
+  }
+  else
+  {
+    if (!m_rpc_server->on_mining_status(mreq, mres))
+    {
+      tools::fail_msg_writer() << fail_message.c_str();
+      return true;
+    }
+
+    if (mres.status == CORE_RPC_STATUS_BUSY)
+    {
+      mining_busy = true;
+    }
+    else if (mres.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, mres.status);
+      return true;
+    }
+  }
+
+  if (!has_mining_info)
+  {
+    tools::fail_msg_writer() << "Mining info unavailable";
+    return true;
+  }
+
+  if (mining_busy || !mres.active)
+  {
+    tools::msg_writer() << "Not currently mining";
+  }
+  else
+  {
+    tools::msg_writer() << "Mining at " << get_mining_speed(mres.speed) << " with " << mres.threads_count << " threads";
+  }
+
+  if (mres.active || mres.is_background_mining_enabled)
+  {
+    tools::msg_writer() << "PoW algorithm: " << mres.pow_algorithm;
+    tools::msg_writer() << "Mining address: " << mres.address;
+  }
+
+  if (mres.is_background_mining_enabled)
+  {
+    tools::msg_writer() << "Smart mining enabled:";
+    tools::msg_writer() << "  Target: " << (unsigned)mres.bg_target << "% CPU";
+    tools::msg_writer() << "  Idle threshold: " << (unsigned)mres.bg_idle_threshold << "% CPU";
+    tools::msg_writer() << "  Min idle time: " << (unsigned)mres.bg_min_idle_seconds << " seconds";
+    tools::msg_writer() << "  Ignore battery: " << (mres.bg_ignore_battery ? "yes" : "no");
+  }
+
+  if (!mining_busy && mres.active && mres.speed > 0 && mres.block_target > 0 && mres.difficulty > 0)
+  {
+    double ratio = mres.speed * mres.block_target / (double)mres.difficulty;
+    uint64_t daily = 86400ull / mres.block_target * mres.block_reward * ratio;
+    uint64_t monthly = 86400ull / mres.block_target * 30.5 * mres.block_reward * ratio;
+    uint64_t yearly = 86400ull / mres.block_target * 356 * mres.block_reward * ratio;
+    tools::msg_writer() << "Expected: " << cryptonote::print_money(daily) << " monero daily, "
+        << cryptonote::print_money(monthly) << " monero monthly, " << cryptonote::print_money(yearly) << " yearly";
+  }
 
   return true;
 }
@@ -589,6 +665,7 @@ bool t_rpc_command_executor::print_connections() {
   }
 
   tools::msg_writer() << std::setw(30) << std::left << "Remote Host"
+      << std::setw(6) << "SSL"
       << std::setw(20) << "Peer id"
       << std::setw(20) << "Support Flags"
       << std::setw(30) << "Recv/Sent (inactive,sec)"
@@ -608,6 +685,7 @@ bool t_rpc_command_executor::print_connections() {
     tools::msg_writer()
      //<< std::setw(30) << std::left << in_out
      << std::setw(30) << std::left << address
+     << std::setw(6) << (info.ssl ? "yes" : "no")
      << std::setw(20) << epee::string_tools::pad_string(info.peer_id, 16, '0', true)
      << std::setw(20) << info.support_flags
      << std::setw(30) << std::to_string(info.recv_count) + "("  + std::to_string(info.recv_idle_time) + ")/" + std::to_string(info.send_count) + "(" + std::to_string(info.send_idle_time) + ")"
@@ -623,6 +701,66 @@ bool t_rpc_command_executor::print_connections() {
     //tools::msg_writer() << boost::format("%-25s peer_id: %-25s %s") % address % info.peer_id % in_out;
 
   }
+
+  return true;
+}
+
+bool t_rpc_command_executor::print_net_stats()
+{
+  cryptonote::COMMAND_RPC_GET_NET_STATS::request net_stats_req;
+  cryptonote::COMMAND_RPC_GET_NET_STATS::response net_stats_res;
+  cryptonote::COMMAND_RPC_GET_LIMIT::request limit_req;
+  cryptonote::COMMAND_RPC_GET_LIMIT::response limit_res;
+
+  std::string fail_message = "Unsuccessful";
+
+  if (m_is_rpc)
+  {
+    if (!m_rpc_client->json_rpc_request(net_stats_req, net_stats_res, "get_net_stats", fail_message.c_str()))
+    {
+      return true;
+    }
+    if (!m_rpc_client->json_rpc_request(limit_req, limit_res, "get_limit", fail_message.c_str()))
+    {
+      return true;
+    }
+  }
+  else
+  {
+    if (!m_rpc_server->on_get_net_stats(net_stats_req, net_stats_res) || net_stats_res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, net_stats_res.status);
+      return true;
+    }
+    if (!m_rpc_server->on_get_limit(limit_req, limit_res) || limit_res.status != CORE_RPC_STATUS_OK)
+    {
+      tools::fail_msg_writer() << make_error(fail_message, limit_res.status);
+      return true;
+    }
+  }
+
+  uint64_t seconds = (uint64_t)time(NULL) - net_stats_res.start_time;
+  uint64_t average = seconds > 0 ? net_stats_res.total_bytes_in / seconds : 0;
+  uint64_t limit = limit_res.limit_down * 1024;   // convert to bytes, as limits are always kB/s
+  double percent = (double)average / (double)limit * 100.0;
+  tools::success_msg_writer() << boost::format("Received %u bytes (%s) in %u packets, average %s/s = %.2f%% of the limit of %s/s")
+    % net_stats_res.total_bytes_in
+    % tools::get_human_readable_bytes(net_stats_res.total_bytes_in)
+    % net_stats_res.total_packets_in
+    % tools::get_human_readable_bytes(average)
+    % percent
+    % tools::get_human_readable_bytes(limit);
+
+  average = seconds > 0 ? net_stats_res.total_bytes_out / seconds : 0;
+  limit = limit_res.limit_up * 1024;
+  percent = (double)average / (double)limit * 100.0;
+  tools::success_msg_writer() << boost::format("Sent %u bytes (%s) in %u packets, average %s/s = %.2f%% of the limit of %s/s")
+    % net_stats_res.total_bytes_out
+    % tools::get_human_readable_bytes(net_stats_res.total_bytes_out)
+    % net_stats_res.total_packets_out
+    % tools::get_human_readable_bytes(average)
+    % percent
+    % tools::get_human_readable_bytes(limit);
 
   return true;
 }
@@ -661,7 +799,7 @@ bool t_rpc_command_executor::print_blockchain_info(uint64_t start_block_index, u
       tools::msg_writer() << "" << std::endl;
     tools::msg_writer()
       << "height: " << header.height << ", timestamp: " << header.timestamp << " (" << tools::get_human_readable_timestamp(header.timestamp) << ")"
-      << ", size: " << header.block_size << ", weight: " << header.block_weight << ", transactions: " << header.num_txes << std::endl
+      << ", size: " << header.block_size << ", weight: " << header.block_weight << " (long term " << header.long_term_weight << "), transactions: " << header.num_txes << std::endl
       << "major version: " << (unsigned)header.major_version << ", minor version: " << (unsigned)header.minor_version << std::endl
       << "block id: " << header.hash << ", previous block id: " << header.prev_hash << std::endl
       << "difficulty: " << header.difficulty << ", nonce " << header.nonce << ", reward " << cryptonote::print_money(header.reward) << std::endl;
@@ -1663,6 +1801,13 @@ bool t_rpc_command_executor::ban(const std::string &ip, time_t seconds)
         }
     }
 
+    // TODO(doyle): Work around because integration tests break when using
+    // mlog_set_categories(""), so emit the block message using msg writer
+    // instead of the logging system.
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
+    tools::success_msg_writer() << "Host " << ip << " blocked.";
+#endif
+
     return true;
 }
 
@@ -1699,6 +1844,9 @@ bool t_rpc_command_executor::unban(const std::string &ip)
         }
     }
 
+#if defined(WORKTIPS_ENABLE_INTEGRATION_TEST_HOOKS)
+    tools::success_msg_writer() << "Host " << ip << " unblocked.";
+#endif
     return true;
 }
 
@@ -2246,6 +2394,16 @@ static void append_printable_service_node_list_entry(cryptonote::network_type ne
     {
       buffer.append("Last Uptime Proof Received: ");
       buffer.append(get_human_time_ago(entry.last_uptime_proof, time(nullptr)));
+
+      buffer.append("\n");
+      buffer.append(indent2);
+      buffer.append("IP Address: ");
+      buffer.append(entry.public_ip);
+
+      buffer.append("\n");
+      buffer.append(indent2);
+      buffer.append("Storage Server Port: ");
+      buffer.append(std::to_string(entry.storage_port));
     }
     buffer.append("\n");
   }
@@ -3235,7 +3393,7 @@ bool t_rpc_command_executor::prune_blockchain()
         }
     }
 
-    tools::success_msg_writer() << "Blockchain pruned: seed " << epee::string_tools::to_string_hex(res.pruning_seed);
+    tools::success_msg_writer() << "Blockchain pruned";
     return true;
 }
 
@@ -3266,7 +3424,7 @@ bool t_rpc_command_executor::check_blockchain_pruning()
 
     if (res.pruning_seed)
     {
-      tools::success_msg_writer() << "Blockchain pruning checked";
+      tools::success_msg_writer() << "Blockchain is pruned";
     }
     else
     {

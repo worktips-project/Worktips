@@ -1,6 +1,6 @@
-// Copyright (c) 2014-2018, The Monero Project
-// Copyright (c)      2018, The Loki Project
-// Copyright (c)      2018, The Worktips Project
+// Copyright (c) 2014-2019, The Monero Project
+// Copyright (c) 2018-2019, The Loki Project
+// Copyright (c)      2019, The Worktips Project
 // 
 // All rights reserved.
 // 
@@ -127,6 +127,13 @@ bool t_command_parser_executor::print_connections(const std::vector<std::string>
   if (!args.empty()) return false;
 
   return m_executor.print_connections();
+}
+
+bool t_command_parser_executor::print_net_stats(const std::vector<std::string>& args)
+{
+  if (!args.empty()) return false;
+
+  return m_executor.print_net_stats();
 }
 
 bool t_command_parser_executor::print_blockchain_info(const std::vector<std::string>& args)
@@ -366,7 +373,7 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
 {
   if(!args.size())
   {
-    std::cout << "Please specify a wallet address to mine for: start_mining <addr> [<threads>]" << std::endl;
+    std::cout << "Please specify a wallet address to mine for: start_mining <addr> [<threads>|auto]" << std::endl;
     return true;
   }
 
@@ -452,8 +459,15 @@ bool t_command_parser_executor::start_mining(const std::vector<std::string>& arg
   
   if(args.size() >= 2)
   {
-    bool ok = epee::string_tools::get_xtype_from_string(threads_count, args[1]);
-    threads_count = (ok && 0 < threads_count) ? threads_count : 1;
+    if (args[1] == "auto" || args[1] == "autodetect")
+    {
+      threads_count = 0;
+    }
+    else
+    {
+      bool ok = epee::string_tools::get_xtype_from_string(threads_count, args[1]);
+      threads_count = (ok && 0 < threads_count) ? threads_count : 1;
+    }
   }
 
   m_executor.start_mining(info.address, threads_count, nettype, do_background_mining, ignore_battery);
@@ -466,6 +480,11 @@ bool t_command_parser_executor::stop_mining(const std::vector<std::string>& args
   if (!args.empty()) return false;
 
   return m_executor.stop_mining();
+}
+
+bool t_command_parser_executor::mining_status(const std::vector<std::string>& args)
+{
+  return m_executor.mining_status();
 }
 
 bool t_command_parser_executor::stop_daemon(const std::vector<std::string>& args)
