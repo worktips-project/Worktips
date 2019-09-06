@@ -53,6 +53,8 @@ set(crypto_sources
   cn_turtle_hash.c
   tree-hash.c)
 
+include_directories(${ARGON2_INCLUDE})
+
 set(crypto_headers)
 
 set(crypto_private_headers
@@ -85,6 +87,7 @@ worktips_add_library(cncrypto
 target_link_libraries(cncrypto
   PUBLIC
     epee
+	argon2
     ${Boost_SYSTEM_LIBRARY}
     ${SODIUM_LIBRARY}
   PRIVATE
