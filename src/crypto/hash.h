@@ -98,7 +98,6 @@ namespace crypto {
       break;
 
       case cn_slow_hash_type::turtle_lite_v2:
-      default:
       {
          const uint32_t CN_TURTLE_PAGE_SIZE = 262144;
          const uint32_t CN_TURTLE_SCRATCHPAD = 262144;
