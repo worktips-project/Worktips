@@ -109,9 +109,10 @@ static const hard_fork_record testnet_hard_forks[] =
 {
   { network_version_7,                   1, 0, 1554448799 },
   { network_version_8,                   2, 0, 1554448860 },
-  { network_version_9_service_nodes,     200, 0, 1560721200 },
-  { network_version_10_bulletproofs,     201, 0, 1560722200 },
-  { network_version_11_infinite_staking, 202, 0, 1560723200 },
+  { network_version_9_service_nodes,     3, 0, 1560721200 },
+  { network_version_10_bulletproofs,     4, 0, 1560722200 },
+  { network_version_11_infinite_staking, 10, 0, 1560723200 },
+	  { network_version_12_checkpointing, 60, 0, 1560723200 },
 };
 
 static const hard_fork_record stagenet_hard_forks[] =
