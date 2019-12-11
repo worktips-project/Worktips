@@ -28,6 +28,10 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
+include_directories(${CMAKE_SOURCE_DIR}/external/argon2/arch/x86_64/lib)
+include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
+
 set(crypto_sources
   aesb.c
   blake256.c
@@ -51,9 +55,17 @@ set(crypto_sources
   cn_heavy_hash_hard_intel.cpp
   cn_heavy_hash_soft.cpp
   cn_turtle_hash.c
-  tree-hash.c)
+  tree-hash.c
+  argon2-arch.c
+  argon2-avx2.c
+  argon2-avx512f.c
+  argon2-sse2.c
+  argon2-ssse3.c
+  argon2-xop.c
+  cpu-flags.c)
 
 include_directories(${ARGON2_INCLUDE})
+include_directories(${CMAKE_SOURCE_DIR}/external/argon2/include)
 
 set(crypto_headers)
 
@@ -76,7 +88,15 @@ set(crypto_private_headers
   random.h
   skein.h
   skein_port.h
-  cn_heavy_hash.hpp)
+  cn_heavy_hash.hpp
+  argon2.h
+  argon2-avx2.h
+  argon2-avx512f.h
+  argon2-sse2.h
+  argon2-ssse3.h
+  argon2-xop.h
+  cpu-flags.h
+  argon2-template-128.h)
 
 worktips_private_headers(cncrypto
   ${crypto_private_headers})
