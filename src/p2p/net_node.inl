@@ -425,23 +425,23 @@ namespace nodetool
     std::set<std::string> full_addrs;
     if (nettype == cryptonote::TESTNET)
     {
-      full_addrs.insert("apple-test.node.worktips.xyz:33021");
+      full_addrs.insert("apple-test.node.worktipscoin.com:33021");
     }
     else if (nettype == cryptonote::STAGENET)
     {
-      full_addrs.insert("apple-stage.node.worktips.xyz:32021");
+      full_addrs.insert("apple-stage.node.worktipscoin.com:32021");
     }
     else if (nettype == cryptonote::FAKECHAIN)
     {
     }
     else
     {
-	  full_addrs.insert("apple.node.worktips.xyz:31021");
-	  full_addrs.insert("blueberry.node.worktips.xyz:31021");
-	  full_addrs.insert("cherry.node.worktips.xyz:31021");
-	  full_addrs.insert("date.node.worktips.xyz:31021");
-	  full_addrs.insert("144.202.10.128:31021");
-	  full_addrs.insert("107.172.242.234:31021");
+	  full_addrs.insert("apple.node.worktipscoin.com:31021");
+	  full_addrs.insert("blueberry.node.worktipscoin.com:31021");
+	  full_addrs.insert("cherry.node.worktipscoin.com:31021");
+	  full_addrs.insert("date.node.worktipscoin.com:31021");
+	  full_addrs.insert("172.105.62.46:31021");
+	  full_addrs.insert("140.82.0.28:31021");
     }
     return full_addrs;
   }
