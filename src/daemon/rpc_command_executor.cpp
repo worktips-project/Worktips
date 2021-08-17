@@ -48,6 +48,7 @@
 #include <ctime>
 #include <string>
 #include <numeric>
+#include <stack>
 
 #undef WORKTIPS_DEFAULT_LOG_CATEGORY
 #define WORKTIPS_DEFAULT_LOG_CATEGORY "daemon"
